@@ -1,0 +1,406 @@
+#<AdxTL>@(#)0.0.0.0 $Revision$ 
+#---------------------------------------------------------------------------------------
+# Bibliothèque des fonctions BY
+#---------------------------------------------------------------------------------------
+
+
+
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+#Fonction de calcul de la remise actuelle
+#BY le 26/10/2018
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+Funprog REMACT(BPC,TR,FICHE)
+
+#DÉCLARATION DES VARIABLES PASSÉES PAR VALEUR
+Value Char  BPC
+Value Char TR
+Value Char FICHE
+
+#OUVERTURE DES TABLES
+If !clalev([F:ZSPL]) : Local File SPRICLIST [F:ZSPL] : Endif
+If !clalev([F:ZBPC]) : Local File BPCUSTOMER [F:ZBPC] : Endif
+
+#Declaration des variables locales du traitement
+Local Float XRESULT : XRESULT=0
+Local Char XCRITERE(250)(2)
+#Local Char XPLICRD(250) : XPLICRD="REM00-1903001"
+
+
+#Alimentation des critères
+If vireblc(TR,4)<>" " Then
+ XCRITERE(0)="[F:ZSPL]PLI=TR"
+ Endif
+
+If vireblc(BPC,4)<>" " & vireblc(TR,4)<>"TR95" Then
+ XCRITERE(1)=" and [F:ZSPL]PLICRI2=BPC and [F:ZSPL]PLICRD=FICHE"
+ Elsif vireblc(BPC,4)<>" " & vireblc(TR,4)="TR95" Then
+    Read [ZBPC]BPC0=BPC #Where [ZBPC]BPCNUM=BPC
+    XCRITERE(1)=" and [F:ZSPL]PLICRI2=[ZBPC]TSCCOD(1) and [F:ZSPL]PLICRD=FICHE"
+#    [ZBPC]TSCCOD(1)
+ Endif
+
+#Récupération du résultat en fonction des critères susmentionnés
+Filter [F:ZSPL] Where evalue(XCRITERE)
+For [ZSPL]
+  If [ZSPL]DCGVAL(0)<>0
+    [L]XRESULT=[ZSPL]DCGVAL(0)
+  Else
+    [L]XRESULT=0
+  Endif
+Next
+
+#Renvoi du résultat
+End [L]XRESULT
+#-----------------------------------------------------------------------------------------------------------------------------------#
+
+
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+#Fonction de calcul et de choix de la remise la plus élevée
+#BY le 26/10/2018
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+Funprog REMACTPE(BPC)
+
+#DÉCLARATION DES VARIABLES PASSÉES PAR VALEUR
+Value Char  BPC
+Value Char TR
+Value Char FICHE
+
+
+#OUVERTURE DES TABLES
+If !clalev([F:ZSPL]) : Local File SPRICLIST [F:ZSPL] : Endif
+If !clalev([F:ZBPC]) : Local File BPCUSTOMER [F:ZBPC] : Endif
+
+#Declaration des variables locales du traitement
+Local Float XRESULT75 : XRESULT75=0
+Local Float XRESULT95 : XRESULT95=0
+Local Float XRESULT : XRESULT=100
+Local Char XCRITERE75(250)(2)
+Local Char XCRITERE95(250)(2)
+Local char PLICRD : PLICRD75='REM00-1903001'
+Local char PLICRD : PLICRD95='REM00-1903001'
+
+
+
+#Alimentation des critères des tarifs TR75 & TR95
+If vireblc(BPC,4)<>" " 
+  #--> Tarif TR75
+  XCRITERE75(0)="[F:ZSPL]PLI='TR75' and [F:ZSPL]PLICRI2=BPC and [F:ZSPL]PLICRD=PLICRD75"
+  #--> Tarif TR95
+  Read [ZBPC]BPC0=BPC 
+  XCRITERE95(0)="[F:ZSPL]PLI='TR95' and [F:ZSPL]PLICRI2=[ZBPC]TSCCOD(1) and [F:ZSPL]PLICRD=PLICRD95"
+Endif
+
+
+#Récupération du résultat en fonction des critères susmentionnés
+
+
+    Filter [F:ZSPL] Where evalue(XCRITERE75)
+        For [ZSPL]
+          #If [ZSPL]DCGVAL(0)<>0
+          If rowcount([ZSPL])>0 
+            [L]XRESULT75=[ZSPL]DCGVAL(0)
+          Else
+            [L]XRESULT75=0
+          Endif
+        Next    
+    # Dépositionner le premier filtre XCRITERE75
+    filter [F:ZSPL]
+
+    Filter [F:ZSPL] Where evalue(XCRITERE95)
+        For [ZSPL]
+          If (rowcount([ZSPL])>0) 
+            [L]XRESULT95=[ZSPL]DCGVAL(0)
+          Else
+            [L]XRESULT95=0
+          Endif
+        Next
+    # Dépositionner le deuxième filtre XCRITERE95
+    filter [F:ZSPL]
+
+
+
+#Renvoi de la remise la plus élevée entre les deux REM75 & REM 95
+IF [L]XRESULT75>=[L]XRESULT95
+  XRESULT=XRESULT75
+Else 
+  XRESULT=XRESULT95
+Endif
+end XRESULT
+#-----------------------------------------------------------------------------------------------------------------------------------#
+
+
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+#Fonction de calcul du chiffre d'affaire Livré (HT)de l'année N à partir de la date du jour
+#BY le 26/10/2018
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+Funprog CA_LIV_CLIENT_HT_N(BPC,XDATE,XCPY)
+
+#Déclaration des variables passées par valeur
+Value Char  BPC
+Value Char  XCPY
+Value Date XDATE
+
+#Déclaration des varible locales
+Local Float XRESULT : XRESULT=0
+Local Char XCRITERE(250)(3)
+
+#Ouverture des tables  --SDELIVERY : Entetes des livraisons
+If !clalev([F:ZSDH]) : Local File SDELIVERY [F:ZSDH] : Endif
+
+#Alimentation des critères
+[L]XCRITERE(0)="[F:ZSDH]BPCORD=BPC"
+[L]XCRITERE(1)=" and year([F:ZSDH]SHIDAT)=year(XDATE)"
+[L]XCRITERE(2)=" and [F:ZSDH]CPY=XCPY"
+
+#Récupération du résultat en fonction des critère susmentionnés
+Filter [ZSDH] Where evalue([L]XCRITERE)
+For [ZSDH]
+  XRESULT+=[ZSDH]DLVNOT
+Next
+
+#Renvoi du résultat
+End [L]XRESULT
+#-----------------------------------------------------------------------------------------------------------------------------------#
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+#Fonction de calcul du chiffre d'affaire facturé (HT)de l'année N-1 à partir de la date du jour
+#BY le 26/10/2018
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+Funprog CA_FAC_CLIENT_HT_LN(BPC,XDATE,XCPY)
+
+#Déclaration des variables passées par valeur
+Value Char  BPC
+Value Date XDATE
+Value Char  XCPY
+
+#Déclaration des varible locales
+Local Float XRESULT : XRESULT=0
+#Local Char XCRITERE(250)(2)
+
+#Ouverture des tables  --SINVOICEV & SINVOICE
+If !clalev([F:ZSIV]) : Local File SINVOICEV [F:ZSIV] : Endif
+If !clalev([F:ZSIH]) : Local File SINVOICE  [F:ZSIH] : Endif
+
+
+# Jointure entre les tables SINVOICE & SINVOICEV
+Link [ZSIH] With [ZSIV]SIV0=[ZSIH]NUM
+&    As [FCT]
+&    Where [ZSIV]BPCORD=BPC & year([ZSIV]INVDAT)=year(XDATE)-1 & [ZSIV]CPY=XCPY
+&    Order By key SIH0
+
+#Récupération du résultat en fonction des critère susmentionnés
+For [FCT]
+  XRESULT+=[FCT]AMTNOT
+Next
+
+Filter
+#Renvoi du résultat
+End [L]XRESULT
+#-----------------------------------------------------------------------------------------------------------------------------------#
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+#Fonction de calcul du chiffre d'affaire Livré (TTC)de l'année N à partir de la date du jour
+#BY le 26/10/2018
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+Funprog CA_LIV_CLIENT_TTC_N(BPC,XDATE)
+
+#Déclaration des variables passées par valeur
+Value Char  BPC
+Value Date XDATE
+
+#Déclaration des varible locales
+Local Float XRESULT
+Local Char XCRITERE(250)(2)
+
+#Ouverture des tables  --SDELIVERY : Entetes des livraisons
+If !clalev([F:ZSDH]) : Local File SDELIVERY [F:ZSDH] : Endif
+
+#Alimentation des critères
+[L]XCRITERE(0)="[F:ZSDH]BPCORD=BPC"
+[L]XCRITERE(1)=" and year([F:ZSDH]SHIDAT)=year(XDATE)"
+
+#Récupération du résultat en fonction des critère susmentionnés
+Filter [ZSDH] Where evalue([L]XCRITERE)
+For [ZSDH]
+  XRESULT+=[ZSDH]DLVATI
+Next
+
+# Dépositionner les filtres
+Filter [ZSDH]
+
+#Renvoi du résultat
+End [L]XRESULT
+#-----------------------------------------------------------------------------------------------------------------------------------#
+
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+#Fonction d'affichage du BPCNAM du client groupe
+#BY le 26/10/2018
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+Funprog BPCGRU_NAME(BPC)
+
+#Déclaration des variables passées par valeur
+Value Char BPC
+
+#Déclaration des variables locales
+Local Char XRESULT(250)
+Local Char XCRITERE(250)
+
+# Ouverture des tables -- BPCUSTOMER : Clients
+If clalev([F:ZBPC])=0 : Local File BPCUSTOMER [F:ZBPC] : Endif
+
+#Alimentation des critère de recherche
+[L]XCRITERE='[F:ZBPC]BPCNUM=BPC'
+
+#Récupération du résultat en fonction des critères susmentionnés
+Filter [ZBPC] Where evalue([L]XCRITERE)
+
+  For [ZBPC]
+  [L]XRESULT=[ZBPC]BPCNAM
+  Next
+
+Filter [ZBPC]
+
+#Renvoi du résultat
+End [L]XRESULT
+#-----------------------------------------------------------------------------------------------------------------------------------#
+
+
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+#Fonction de calcul :  Montant du reste à livrer (! fini)
+#BY le 30/11/2018
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+
+Funprog CA_STAY_TOSHIP(XFCY,XDATEDEB,XDATEFIN)
+
+#Déclaration des variables passées par valeur
+Value Date XDATEDEB,XDATEFIN
+Value Char XFCY
+
+#Déclaration des variables locales
+Local Char XRESULT(250)
+Local Char XCRITERE1(250)
+
+# Ouverture des tables -- SORDERP : Prix des lignes commandes de vente
+If clalev([F:XSOP])=0 : Local File SORDERP    [F:XSOP] : Endif
+IF clalev([F:XITM])=0 : Local File ITMMASTER  [F:XITM] : Endif
+IF Clalev ([F:XSOH])=0 : Local file SORDER [F:XSOH] : Endif
+
+#Alimentation des critères de recherche
+[L]XCRITERE1="[XITM]TSICOD_0<>'590' and [XITM]TSICOD_0<>'600' and [XITM]TSICOD_0<>'090'  and [XITM]TSICOD_0<>'095' and [XITM]TSICOD_0<>'091' and "
+
+
+
+# Jointure entre les tables SORDERP & ITMMASTER
+Link [XSOP] With [XITM]ITM0=[XSOP]ITMREF
+&    As [ZSOP]
+&    Where evalue (XCRITERE1)
+
+
+#Récupération du résultat en fonction des critères susmentionnés
+Filter [ZSOP] Where evalue([L]XCRITERE)
+
+  For [ZBPC]
+  [L]XRESULT=[ZBPC]BPCNAM
+  Next
+
+Filter [ZBPC]
+
+#Renvoi du résultat
+End [L]XRESULT
+#-----------------------------------------------------------------------------------------------------------------------------------#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
